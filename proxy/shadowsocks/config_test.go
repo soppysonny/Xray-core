@@ -2,7 +2,9 @@ package shadowsocks_test
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"crypto/rand"
+	"io"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -61,5 +63,43 @@ func TestStreamCipher_Chacha20IETF(t *testing.T) {
 
 	if !bytes.Equal(plain, plaintext) {
 		t.Errorf("chacha20-ietf decrypt not match, got %s, want %s", plaintext, plain)
+	}
+}
+
+func TestShadowsocksCipher_Chacha20IETF(t *testing.T) {
+	rawAccount := &shadowsocks.Account{
+		CipherType: shadowsocks.CipherType_CHACHA20_IETF,
+		Password:   "testpassword",
+	}
+	account, err := rawAccount.AsAccount()
+	common.Must(err)
+
+	ssCipher := account.(*shadowsocks.MemoryAccount).Cipher
+
+	key := make([]byte, ssCipher.KeySize())
+	common.Must2(rand.Read(key))
+	iv := make([]byte, ssCipher.IVSize())
+	common.Must2(rand.Read(iv))
+
+	plain := []byte("hello, chacha20-ietf test!")
+
+	// 加密
+	encStream, err := ssCipher.(*shadowsocks.StreamCipher).NewCipherFunc(key, iv)
+	common.Must(err)
+	var encBuf bytes.Buffer
+	writer := &cipher.StreamWriter{S: encStream, W: &encBuf}
+	_, err = writer.Write(plain)
+	common.Must(err)
+
+	// 解密
+	decStream, err := ssCipher.(*shadowsocks.StreamCipher).NewCipherFunc(key, iv)
+	common.Must(err)
+	reader := &cipher.StreamReader{S: decStream, R: &encBuf}
+	decPlain := make([]byte, len(plain))
+	_, err = io.ReadFull(reader, decPlain)
+	common.Must(err)
+
+	if !bytes.Equal(plain, decPlain) {
+		t.Errorf("chacha20-ietf decrypt not match, got %s, want %s", decPlain, plain)
 	}
 }
