@@ -6,8 +6,9 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/sha1"
-	"google.golang.org/protobuf/proto"
 	"io"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/antireplay"
@@ -105,6 +106,14 @@ func (a *Account) getCipher() (Cipher, error) {
 		}, nil
 	case CipherType_NONE:
 		return NoneCipher{}, nil
+	case CipherType_CHACHA20_IETF:
+		return &StreamCipher{
+			KeyBytes: 32,
+			IVBytes:  12,
+			NewCipherFunc: func(key, iv []byte) (cipher.Stream, error) {
+				return chacha20.NewUnauthenticatedCipher(key, iv)
+			},
+		}, nil
 	default:
 		return nil, errors.New("Unsupported cipher.")
 	}
@@ -255,3 +264,32 @@ func hkdfSHA1(secret, salt, outKey []byte) {
 	r := hkdf.New(sha1.New, secret, salt, []byte("ss-subkey"))
 	common.Must2(io.ReadFull(r, outKey))
 }
+
+type StreamCipher struct {
+	KeyBytes      int32
+	IVBytes       int32
+	NewCipherFunc func(key, iv []byte) (cipher.Stream, error)
+}
+
+func (c *StreamCipher) KeySize() int32 { return c.KeyBytes }
+func (c *StreamCipher) IVSize() int32  { return c.IVBytes }
+func (c *StreamCipher) IsAEAD() bool   { return false }
+
+func (c *StreamCipher) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
+	stream, err := c.NewCipherFunc(key, iv)
+	if err != nil {
+		return nil, err
+	}
+	return buf.NewWriter(&cipher.StreamWriter{S: stream, W: writer}), nil
+}
+
+func (c *StreamCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
+	stream, err := c.NewCipherFunc(key, iv)
+	if err != nil {
+		return nil, err
+	}
+	return buf.NewReader(&cipher.StreamReader{S: stream, R: reader}), nil
+}
+
+func (c *StreamCipher) EncodePacket(key []byte, b *buf.Buffer) error { return nil }
+func (c *StreamCipher) DecodePacket(key []byte, b *buf.Buffer) error { return nil }
