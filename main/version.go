@@ -10,9 +10,8 @@ import (
 var cmdVersion = &base.Command{
 	UsageLine: "{{.Exec}} version",
 	Short:     "Show current version of Xray",
-	Long: `Version prints the build information for Xray executables.
-	`,
-	Run: executeVersion,
+	Long:      `Version prints the build information for Xray executables.`,
+	Run:       executeVersion,
 }
 
 func executeVersion(cmd *base.Command, args []string) {
